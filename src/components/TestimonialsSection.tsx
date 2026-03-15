@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { useState } from "react";
 import StarRating from "./StarRating";
-import { Send } from "lucide-react";
+import { Send, Star } from "lucide-react";
 
 interface Feedback {
   name: string;
