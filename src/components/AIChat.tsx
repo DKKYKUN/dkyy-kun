@@ -1,11 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { MessageSquare, X, Send, Bot, User } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   role: "user" | "assistant";
   content: string;
 }
+
+const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/chat`;
 
 export default function AIChat() {
   const [isOpen, setIsOpen] = useState(false);
@@ -23,34 +26,76 @@ export default function AIChat() {
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
     const userMsg: Message = { role: "user", content: input.trim() };
-    setMessages((prev) => [...prev, userMsg]);
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
     setInput("");
     setLoading(true);
 
-    // Simple local AI responses about the portfolio
-    const lowerInput = input.toLowerCase();
-    let response = "";
+    let assistantSoFar = "";
 
-    if (lowerInput.includes("skill") || lowerInput.includes("teknologi")) {
-      response = "Dkyy menguasai beberapa teknologi:\n\n**Frontend:** HTML (Advanced), CSS, JavaScript, React, Tailwind CSS, Vite\n**Backend:** Node.js, Express.js, MongoDB, Supabase\n**Tools:** Git & GitHub, VS Code, Figma\n**AI:** ChatGPT, GitHub Copilot";
-    } else if (lowerInput.includes("project") || lowerInput.includes("proyek")) {
-      response = "Beberapa project yang sudah dibuat:\n\n1. **Money Tracker** - Fullstack app dengan React + Supabase\n2. **AI Chatbot JSON** - React + Express backend\n3. **RESTful API Service** - Express.js + MongoDB\n4. **Weather App** - Frontend dengan OpenWeather API\n5. **Link Collector** - Fullstack (in progress)\n6. **Personal Portfolio** - HTML & CSS";
-    } else if (lowerInput.includes("experience") || lowerInput.includes("pengalaman")) {
-      response = "Dkyy memiliki 1+ tahun pengalaman di web development:\n\n• **Front-End Developer** - Self-taught, React & Tailwind\n• **Backend Developer** - RESTful APIs dengan Express.js\n• **Fullstack Developer** - React + Supabase projects\n• **Mahasiswa Teknik Elektro** - Universitas Bengkulu";
-    } else if (lowerInput.includes("siapa") || lowerInput.includes("who") || lowerInput.includes("about")) {
-      response = "Dkyy Alfasi adalah mahasiswa Teknik Elektro di Universitas Bengkulu yang passionate di web development. Lahir 8 Agustus 2006 di Klaten, Indonesia. Motto: \"Focus on purpose not girls because gf is temporary, success is permanent\" 😎";
-    } else if (lowerInput.includes("contact") || lowerInput.includes("kontak") || lowerInput.includes("hubungi")) {
-      response = "Kamu bisa menghubungi Dkyy melalui:\n\n• **GitHub:** github.com/DKKYKUN\n• **Instagram:** @mdkyalfsy\n• **Twitter:** @AlfasiDicky\n\nAtau gunakan form di bagian Contact!";
-    } else if (lowerInput.includes("halo") || lowerInput.includes("hi") || lowerInput.includes("hello") || lowerInput.includes("hai")) {
-      response = "Halo! 😊 Senang bertemu denganmu! Saya bisa membantu kamu mengetahui lebih banyak tentang Dkyy. Tanyakan tentang skills, projects, experience, atau apapun!";
-    } else {
-      response = "Terima kasih pertanyaannya! Saya bisa memberikan info tentang:\n\n• **Skills & Teknologi** yang dikuasai\n• **Projects** yang sudah dibuat\n• **Experience** & pengalaman\n• **About** - tentang Dkyy\n• **Contact** - cara menghubungi\n\nSilakan tanya salah satu topik di atas! 😊";
+    try {
+      const resp = await fetch(CHAT_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY}`,
+        },
+        body: JSON.stringify({ messages: newMessages }),
+      });
+
+      if (!resp.ok || !resp.body) {
+        const errData = await resp.json().catch(() => ({}));
+        throw new Error(errData.error || "Failed to connect to AI");
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let textBuffer = "";
+      let streamDone = false;
+
+      const upsertAssistant = (chunk: string) => {
+        assistantSoFar += chunk;
+        setMessages(prev => {
+          const last = prev[prev.length - 1];
+          if (last?.role === "assistant" && prev.length > 1 && prev[prev.length - 2]?.role === "user") {
+            return prev.map((m, i) => (i === prev.length - 1 ? { ...m, content: assistantSoFar } : m));
+          }
+          return [...prev, { role: "assistant", content: assistantSoFar }];
+        });
+      };
+
+      while (!streamDone) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        textBuffer += decoder.decode(value, { stream: true });
+
+        let newlineIndex: number;
+        while ((newlineIndex = textBuffer.indexOf("\n")) !== -1) {
+          let line = textBuffer.slice(0, newlineIndex);
+          textBuffer = textBuffer.slice(newlineIndex + 1);
+          if (line.endsWith("\r")) line = line.slice(0, -1);
+          if (line.startsWith(":") || line.trim() === "") continue;
+          if (!line.startsWith("data: ")) continue;
+
+          const jsonStr = line.slice(6).trim();
+          if (jsonStr === "[DONE]") { streamDone = true; break; }
+
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const content = parsed.choices?.[0]?.delta?.content as string | undefined;
+            if (content) upsertAssistant(content);
+          } catch {
+            textBuffer = line + "\n" + textBuffer;
+            break;
+          }
+        }
+      }
+    } catch (e) {
+      console.error("AI Chat error:", e);
+      setMessages(prev => [...prev, { role: "assistant", content: "Maaf, terjadi kesalahan. Coba lagi nanti ya! 😔" }]);
+    } finally {
+      setLoading(false);
     }
-
-    // Simulate typing delay
-    await new Promise((r) => setTimeout(r, 800 + Math.random() * 700));
-    setMessages((prev) => [...prev, { role: "assistant", content: response }]);
-    setLoading(false);
   };
 
   return (
@@ -90,12 +135,16 @@ export default function AIChat() {
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 ${m.role === "user" ? "bg-primary/10" : "bg-secondary"}`}>
                     {m.role === "user" ? <User size={12} className="text-primary" /> : <Bot size={12} className="text-muted-foreground" />}
                   </div>
-                  <div className={`max-w-[80%] rounded-xl px-3 py-2 text-xs leading-relaxed whitespace-pre-line ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}>
-                    {m.content}
+                  <div className={`max-w-[80%] rounded-xl px-3 py-2 text-xs leading-relaxed ${m.role === "user" ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground"}`}>
+                    {m.role === "assistant" ? (
+                      <div className="prose prose-xs prose-invert max-w-none [&_p]:m-0 [&_ul]:m-0 [&_ol]:m-0 [&_li]:m-0 [&_strong]:text-foreground">
+                        <ReactMarkdown>{m.content}</ReactMarkdown>
+                      </div>
+                    ) : m.content}
                   </div>
                 </div>
               ))}
-              {loading && (
+              {loading && !messages[messages.length - 1]?.content && (
                 <div className="flex gap-2">
                   <div className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center"><Bot size={12} className="text-muted-foreground" /></div>
                   <div className="bg-secondary rounded-xl px-3 py-2 text-xs text-muted-foreground">Typing...</div>

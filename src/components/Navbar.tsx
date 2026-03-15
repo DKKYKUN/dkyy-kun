@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Home, User, FolderOpen, Briefcase, Wrench, MessageSquare, Mail, Menu, X } from "lucide-react";
+import { Home, User, FolderOpen, Briefcase, Wrench, MessageSquare, Mail, Award, Menu, X } from "lucide-react";
 
 const navItems = [
   { label: "Home", href: "#home", icon: Home },
@@ -7,6 +7,7 @@ const navItems = [
   { label: "Projects", href: "#projects", icon: FolderOpen },
   { label: "Experience", href: "#experience", icon: Briefcase },
   { label: "Skills", href: "#skills", icon: Wrench },
+  { label: "Certificates", href: "#certificates", icon: Award },
   { label: "Testimonials", href: "#testimonials", icon: MessageSquare },
   { label: "Contact", href: "#contact", icon: Mail },
 ];
