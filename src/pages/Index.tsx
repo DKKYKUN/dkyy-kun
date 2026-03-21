@@ -48,7 +48,7 @@ const Index = () => {
             <ContactSection />
           </ScrollReveal>
           <Footer />
-          <AIChat />
+          
         </div>
       )}
     </>
