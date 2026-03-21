@@ -11,7 +11,7 @@ import CertificatesSection from "@/components/CertificatesSection";
 import TestimonialsSection from "@/components/TestimonialsSection";
 import ContactSection from "@/components/ContactSection";
 import Footer from "@/components/Footer";
-import AIChat from "@/components/AIChat";
+
 import ScrollReveal from "@/components/ScrollReveal";
 
 const Index = () => {
